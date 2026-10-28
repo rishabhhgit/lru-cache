@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+CacheLab/
+
+# Binaries
+cache_server
+cache_tests
+cache_benchmark
+cache_*.exe
+*.exe
+
+# Environment
+.env
+.env.local
