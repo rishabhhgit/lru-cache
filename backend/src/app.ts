@@ -9,9 +9,8 @@ import { requestLogger } from './middleware/requestLogger';
 /**
  * Build the Express application.
  *
- * The gateway owns routing, validation, CORS, body limits and error
- * handling. Cache state lives exclusively in the C++ server; this app only
- * forwards requests.
+ * The LRU cache now runs in-process (TypeScript port of the C++ engine),
+ * so no external C++ server is required. Everything deploys to Vercel.
  */
 export function createApp(cacheService?: CacheService): Application {
     const app: Application = express();
@@ -35,11 +34,8 @@ export function createApp(cacheService?: CacheService): Application {
         res.json({ success: true, service: 'cachelab-gateway' });
     });
 
-    // API routes.
-    const svc = cacheService ?? new CacheService(
-        process.env.CACHE_SERVER_URL || 'http://localhost:8080',
-        parseInt(process.env.CACHE_SERVER_TIMEOUT_MS || '5000', 10),
-    );
+    // API routes — CacheService now owns the cache in-process.
+    const svc = cacheService ?? new CacheService();
     app.use('/api', createCacheRoutes(svc));
 
     // 404 for unknown routes.
