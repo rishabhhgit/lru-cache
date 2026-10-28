@@ -12,10 +12,21 @@ export default function App() {
     const [entry, setEntry] = useState<GetEntryResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [showHelp, setShowHelp] = useState(false);
+    const [reaction, setReaction] = useState<'idle' | 'put' | 'get' | 'delete' | 'clear' | 'resize' | 'miss'>( 'idle');
+    const [reactionTime, setReactionTime] = useState(0);
 
-    const statsRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const statsRef = useRef<ReturnType<typeof setInterval>>(null);
+    const reactionTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
     const clearError = useCallback(() => setError(null), []);
+
+    const triggerReaction = useCallback((type: 'put' | 'get' | 'delete' | 'clear' | 'resize' | 'miss') => {
+        setReaction(type);
+        setReactionTime(Date.now());
+        if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
+        reactionTimerRef.current = setTimeout(() => setReaction('idle'), 1500);
+    }, []);
 
     const fetchStats = useCallback(async () => {
         try {
@@ -64,6 +75,7 @@ export default function App() {
         try {
             await cacheApi.putEntry(key, value);
             setEntry(null);
+            triggerReaction('put');
             await fetchEntries();
             await fetchStats();
         } catch (err) {
@@ -79,6 +91,7 @@ export default function App() {
         try {
             const result = await cacheApi.getEntry(key);
             setEntry(result);
+            triggerReaction(result.hit ? 'get' : 'miss');
             if (!result.hit) {
                 setError(`Key "${key}" not found in cache`);
             }
@@ -95,6 +108,7 @@ export default function App() {
         try {
             await cacheApi.deleteEntry(key);
             setEntry(null);
+            triggerReaction('delete');
             await fetchEntries();
             await fetchStats();
         } catch (err) {
@@ -110,6 +124,7 @@ export default function App() {
         try {
             await cacheApi.clear();
             setEntry(null);
+            triggerReaction('clear');
             await fetchEntries();
             await fetchStats();
         } catch (err) {
@@ -124,6 +139,7 @@ export default function App() {
         setError(null);
         try {
             await cacheApi.resize(capacity);
+            triggerReaction('resize');
             await fetchStats();
             await fetchEntries();
         } catch (err) {
@@ -146,32 +162,117 @@ export default function App() {
         }
     };
 
+    const reactionAge = Date.now() - reactionTime;
+    const isReacting = reaction !== 'idle' && reactionAge < 1500;
+
     return (
         <div className="app">
-            <header>
-                <h1>CacheLab</h1>
-                <span className="badge ok">LRU Cache</span>
-            </header>
+            {/* Reactive golden/silver background */}
+            <div className="bg-layer" style={{
+                background: isReacting
+                    ? reactionGradient(reaction)
+                    : 'linear-gradient(135deg, #f5f3e4 0%, #e8e2c8 50%, #d4c9a6 100%)',
+                transition: 'background 0.8s ease',
+            }}>
+                <div className="bg-shine" style={{
+                    opacity: isReacting ? 0.6 : 0.3,
+                    transition: 'opacity 0.8s ease',
+                }} />
+                <div className="bg-particles" />
+            </div>
 
-            <main className="app">
-                <ErrorBanner error={error} onDismiss={clearError} />
+            <div className="container">
+                <header className="app-header">
+                    <div className="brand">
+                        <div className="logo">CL</div>
+                        <div>
+                            <h1>CacheLab</h1>
+                            <p>LRU Cache Dashboard</p>
+                        </div>
+                    </div>
+                    <div className="header-actions">
+                        <button
+                            className="btn ghost"
+                            onClick={() => setShowHelp(!showHelp)}
+                            title="How it works"
+                        >
+                            ? How it works
+                        </button>
+                        <span className={`status-badge ${stats ? 'ok' : 'down'}`}>
+                            {stats ? 'Server OK' : 'Connecting…'}
+                        </span>
+                    </div>
+                </header>
 
-                <div className="toolbar">
-                    <button className="primary" onClick={fetchStats} disabled={loading}>
-                        Refresh
-                    </button>
-                    <button className="secondary" onClick={handleClear} disabled={loading}>
-                        Clear Cache
-                    </button>
-                    <button className="secondary" onClick={handleResetStats} disabled={loading}>
-                        Reset Stats
-                    </button>
+                {showHelp && (
+                    <div className="help-modal">
+                        <div className="help-card">
+                            <h2>How CacheLab Works</h2>
+                            <p>
+                                CacheLab is an <strong>LRU (Least Recently Used)</strong> cache. When the cache
+                                reaches its capacity, the <em>least recently used</em> entry is automatically
+                                evicted to make room for new data.
+                            </p>
+                            <div className="help-steps">
+                                <div className="step">
+                                    <span className="step-num">1</span>
+                                    <div>
+                                        <strong>Put</strong> — Store a key-value pair. If the key exists, it's updated and marked most-recently-used.
+                                    </div>
+                                </div>
+                                <div className="step">
+                                    <span className="step-num">2</span>
+                                    <div>
+                                        <strong>Get</strong> — Retrieve a value. A hit promotes the key to MRU; a miss does nothing.
+                                    </div>
+                                </div>
+                                <div className="step">
+                                    <span className="step-num">3</span>
+                                    <div>
+                                        <strong>Eviction</strong> — When full, the oldest (LRU) entry is removed before inserting a new one.
+                                    </div>
+                                </div>
+                                <div className="step">
+                                    <span className="step-num">4</span>
+                                    <div>
+                                        <strong>Delete / Clear / Resize</strong> — Manage entries and capacity at runtime.
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="help-tech">
+                                <p><strong>Architecture:</strong> C++20 engine (std::list + std::unordered_map, O(1)) → cpp-httplib HTTP server → Express gateway → React dashboard.</p>
+                                <p><strong>Thread safety:</strong> std::shared_mutex allows concurrent reads with exclusive writes.</p>
+                            </div>
+                            <button className="btn primary" onClick={() => setShowHelp(false)}>
+                                Got it
+                            </button>
+                        </div>
+                        <div className="help-backdrop" onClick={() => setShowHelp(false)} />
+                    </div>
+                )}
+
+                {error && (
+                    <div className="error-banner">
+                        {error}
+                        <button className="dismiss" onClick={clearError}>Dismiss</button>
+                    </div>
+                )}
+
+                <div className="stats-row">
+                    <StatCard label="Capacity" value={stats?.capacity ?? '-'} />
+                    <StatCard label="Size" value={stats?.size ?? '-'} />
+                    <StatCard label="Hits" value={stats?.hits ?? '-'} />
+                    <StatCard label="Misses" value={stats?.misses ?? '-'} />
+                    <StatCard label="Hit Rate" value={stats ? `${stats.hit_rate.toFixed(1)}%` : '-'} />
+                    <StatCard label="Evictions" value={stats?.evictions ?? '-'} />
                 </div>
 
-                <Stats stats={stats} loading={loading && entries.length === 0 && !stats} error={error} />
-
-                <div className="grid" style={{ gridTemplateColumns: '1fr 320px', gap: '1rem' }}>
-                    <div style={{ minWidth: 0 }}>
+                <div className="main-grid">
+                    <div className="card entries-card">
+                        <div className="card-header">
+                            <h2>Entries (MRU → LRU)</h2>
+                            <span className="count">{entries.length}</span>
+                        </div>
                         <CacheList
                             entries={entries}
                             loading={loading}
@@ -180,7 +281,8 @@ export default function App() {
                             onDelete={handleDelete}
                         />
                     </div>
-                    <div>
+
+                    <div className="card controls-card">
                         <EntryForm
                             onPut={handlePut}
                             loading={loading}
@@ -188,28 +290,65 @@ export default function App() {
                             setError={setError}
                         />
                         {entry && (
-                            <div className="card" style={{ marginTop: '1rem' }}>
-                                <h2 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: '#94a3b8' }}>
-                                    Last Lookup
-                                </h2>
-                                <div className="row">
-                                    <span style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{entry.key}</span>
-                                    <span
-                                        className={`badge ${entry.hit ? 'ok' : 'bad'}`}
-                                        style={{ marginLeft: 'auto' }}
-                                    >
-                                        {entry.hit ? 'HIT' : 'MISS'}
-                                    </span>
-                                </div>
-                                <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', wordBreak: 'break-all', marginTop: '0.5rem' }}>
-                                    {entry.value ?? '<null>'}
-                                </div>
+                            <div className="lookup-result">
+                                <h3>Last Lookup</h3>
+                                <div className="lookup-key">{entry.key}</div>
+                                <span className={`lookup-badge ${entry.hit ? 'hit' : 'miss'}`}>
+                                    {entry.hit ? 'HIT' : 'MISS'}
+                                </span>
+                                <div className="lookup-value">{entry.value ?? '<null>'}</div>
                             </div>
                         )}
+                        <div className="toolbar">
+                            <button className="btn primary" onClick={() => { fetchStats(); fetchEntries(); }}>
+                                Refresh
+                            </button>
+                            <button className="btn secondary" onClick={handleClear}>
+                                Clear Cache
+                            </button>
+                            <button className="btn secondary" onClick={handleResetStats}>
+                                Reset Stats
+                            </button>
+                        </div>
+                        <div className="resize-card">
+                            <h3>Resize</h3>
+                            <div className="resize-input">
+                                <input
+                                    type="number"
+                                    placeholder="new capacity"
+                                    className="resize-input-field"
+                                />
+                                <button className="btn primary" onClick={() => {}}>Set</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </main>
+
+                <footer className="app-footer">
+                    CacheLab • C++20 LRU engine → Express gateway → React dashboard
+                </footer>
+            </div>
         </div>
     );
 }
 
+function reactionGradient(type: string) {
+    switch (type) {
+        case 'put': return 'linear-gradient(135deg, #fff8e1 0%, #ffe082 40%, #ffd54f 70%, #ffca28 100%)';
+        case 'get': return 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 40%, #90caf9 70%, #64b5f6 100%)';
+        case 'delete': return 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 40%, #ef9a9a 70%, #e57373 100%)';
+        case 'clear': return 'linear-gradient(135deg, #f3e5f5 0%, #e1bee7 40%, #ce93d8 70%, #ba68c8 100%)';
+        case 'resize': return 'linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 40%, #80cbc4 70%, #4db6ac 100%)';
+        case 'miss': return 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 40%, #ffcc80 70%, #ffb74d 100%)';
+        default: return 'linear-gradient(135deg, #f5f3e4 0%, #e8e2c8 50%, #d4c9a6 100%)';
+    }
+}
+
+function StatCard({ label, value }: { label: string; value: string | number }) {
+    return (
+        <div className="stat-card">
+            <div className="stat-label">{label}</div>
+            <div className="stat-value">{value}</div>
+        </div>
+    );
+}
