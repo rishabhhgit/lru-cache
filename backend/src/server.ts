@@ -1,6 +1,6 @@
 import { createApp } from './app';
 
-const PORT = parseInt(process.env.PORT || '5000', 10);
+const PORT = parseInt(process.env.PORT || '5001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
 const app = createApp();

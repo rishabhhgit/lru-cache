@@ -14,7 +14,7 @@ export default defineConfig({
         proxy: {
             // Forward API calls to the Express gateway during development.
             '/api': {
-                target: process.env.VITE_BACKEND_URL || 'http://localhost:5000',
+                target: process.env.VITE_BACKEND_URL || 'http://localhost:5001',
                 changeOrigin: true,
             },
         },

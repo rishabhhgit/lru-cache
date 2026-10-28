@@ -36,7 +36,7 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
                         <span className="cl-vis-icon">🔗</span> Doubly Linked List & Hash Map State
                     </h2>
                     <span className="cl-vis-subtitle">
-                        Real-time C++ heap representation • LRU (Head / Eviction Target) ⇄ MRU (Tail / Newest)
+                        Real-time C++ heap representation • LRU (Head / Eviction Target) ⇄ MRU (Tail / Newest) • Capacity: {totalEntries}/{capacity}
                     </span>
                 </div>
 
