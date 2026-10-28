@@ -75,6 +75,35 @@ export function createCacheRoutes(cacheService: CacheService): Router {
         }
     });
 
+    // ---- POST /api/cache --------------------------------------------------
+    router.post('/cache', async (req: Request, res: Response, next: NextFunction) => {
+        const key = req.body?.key;
+        if (!key || typeof key !== 'string' || key.trim() === '') {
+            res.status(400).json({ success: false, error: "missing or invalid 'key' in request body" });
+            return;
+        }
+        if (req.body === undefined || req.body.value === undefined) {
+            res.status(400).json({ success: false, error: "missing 'value' field in request body" });
+            return;
+        }
+        try {
+            const result = await cacheService.putEntry(key.trim(), req.body.value);
+            res.json({ success: true, data: result, key: key.trim() });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    // ---- DELETE /api/cache (clear entire cache) ---------------------------
+    router.delete('/cache', async (_req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await cacheService.clear();
+            res.json({ success: true, data: result });
+        } catch (err) {
+            next(err);
+        }
+    });
+
     // ---- DELETE /api/cache/:key -------------------------------------------
     router.delete('/cache/:key', async (req: Request, res: Response, next: NextFunction) => {
         const key = req.params.key;

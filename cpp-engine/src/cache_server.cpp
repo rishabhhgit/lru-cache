@@ -129,15 +129,79 @@ int main(int argc, char* argv[]) {
                                 ? body["value"].get<std::string>()
                                 : body["value"].dump();
         try {
-            g_cache->put(key, value);
+            auto put_res = g_cache->put(key, value);
+            json resp;
+            resp["key"] = key;
+            resp["value"] = value;
+            resp["inserted"] = put_res.inserted;
+            resp["updated"] = put_res.updated;
+            resp["evicted"] = put_res.evicted;
+            if (put_res.evicted) {
+                resp["evicted_entry"] = {
+                    {"key", put_res.evicted_key},
+                    {"value", put_res.evicted_value}
+                };
+            } else {
+                resp["evicted_entry"] = nullptr;
+            }
+            resp["message"] = "ok";
+            send_json(res, 200, resp);
         } catch (const std::exception& e) {
             send_error(res, 500, e.what());
             return;
         }
+    });
+
+    // POST /cache endpoint with { key, value }
+    svr.Post("/cache", [](const httplib::Request& req, httplib::Response& res) {
+        json body;
+        try {
+            body = json::parse(req.body);
+        } catch (...) {
+            send_error(res, 400, "invalid JSON in request body");
+            return;
+        }
+        if (!body.contains("key") || !body["key"].is_string() || body["key"].get<std::string>().empty()) {
+            send_error(res, 400, "missing or empty 'key' in request body");
+            return;
+        }
+        if (!body.contains("value")) {
+            send_error(res, 400, "missing 'value' in request body");
+            return;
+        }
+        std::string key = body["key"].get<std::string>();
+        std::string value = body["value"].is_string()
+                                ? body["value"].get<std::string>()
+                                : body["value"].dump();
+        try {
+            auto put_res = g_cache->put(key, value);
+            json resp;
+            resp["key"] = key;
+            resp["value"] = value;
+            resp["inserted"] = put_res.inserted;
+            resp["updated"] = put_res.updated;
+            resp["evicted"] = put_res.evicted;
+            if (put_res.evicted) {
+                resp["evicted_entry"] = {
+                    {"key", put_res.evicted_key},
+                    {"value", put_res.evicted_value}
+                };
+            } else {
+                resp["evicted_entry"] = nullptr;
+            }
+            resp["message"] = "ok";
+            send_json(res, 200, resp);
+        } catch (const std::exception& e) {
+            send_error(res, 500, e.what());
+            return;
+        }
+    });
+
+    // DELETE /cache - clear entire cache
+    svr.Delete("/cache", [](const httplib::Request&, httplib::Response& res) {
+        g_cache->clear();
         json resp;
-        resp["key"] = key;
-        resp["value"] = value;
-        resp["message"] = "ok";
+        resp["message"] = "cache cleared";
         send_json(res, 200, resp);
     });
 
@@ -147,10 +211,12 @@ int main(int argc, char* argv[]) {
             send_error(res, 400, "key is required");
             return;
         }
-        bool removed = g_cache->remove(key);
+        std::string removed_val;
+        bool removed = g_cache->remove(key, &removed_val);
         if (removed) {
             json resp;
             resp["key"] = key;
+            resp["value"] = removed_val;
             resp["message"] = "deleted";
             send_json(res, 200, resp);
         } else {
@@ -161,18 +227,41 @@ int main(int argc, char* argv[]) {
     svr.Get("/cache", [](const httplib::Request&, httplib::Response& res) {
         // Use getEntries() (read-only) so listing the cache does not promote
         // every entry to MRU and corrupt the observed recency order.
-        auto entries = g_cache->getEntries();
+        auto entries_mru = g_cache->getEntriesMRUtoLRU();
+        auto entries_lru = g_cache->getEntriesLRUtoMRU();
+
         json entries_json = json::array();
-        for (const auto& [key, value] : entries) {
+        for (std::size_t i = 0; i < entries_mru.size(); ++i) {
+            const auto& [key, value] = entries_mru[i];
             json entry;
             entry["key"] = key;
-            entry["value"] = value; // raw stored string; clients parse JSON as needed
+            entry["value"] = value;
             entry["hit"] = true;
+            entry["position"] = i;
+            entry["is_mru"] = (i == 0);
+            entry["is_lru"] = (i + 1 == entries_mru.size());
             entries_json.push_back(entry);
         }
+
+        json lru_order_json = json::array();
+        for (std::size_t i = 0; i < entries_lru.size(); ++i) {
+            const auto& [key, value] = entries_lru[i];
+            json entry;
+            entry["key"] = key;
+            entry["value"] = value;
+            entry["hit"] = true;
+            entry["position"] = i;
+            entry["is_lru"] = (i == 0);
+            entry["is_mru"] = (i + 1 == entries_lru.size());
+            lru_order_json.push_back(entry);
+        }
+
         json body;
         body["count"] = static_cast<int>(entries_json.size());
-        body["entries"] = entries_json;
+        body["entries"] = entries_json; // MRU -> LRU (backwards-compatible)
+        body["lru_to_mru"] = lru_order_json; // LRU (oldest) -> MRU (newest)
+        body["oldest_lru"] = entries_lru.empty() ? nullptr : json{{"key", entries_lru.front().first}, {"value", entries_lru.front().second}};
+        body["newest_mru"] = entries_mru.empty() ? nullptr : json{{"key", entries_mru.front().first}, {"value", entries_mru.front().second}};
         send_json(res, 200, body);
     });
 

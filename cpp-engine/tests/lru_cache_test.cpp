@@ -258,3 +258,70 @@ TEST(LRUCacheTest, NoDuplicateKeysInvariant) {
     EXPECT_EQ(cache.size(), 7u);
     EXPECT_EQ(mru_to_lru(cache).size(), cache.size());
 }
+
+TEST(LRUCacheTest, PutReturnsCorrectMetadataForInsertUpdateEvict) {
+    LRUCache<std::string, std::string> cache(2);
+
+    // 1. Initial insert
+    auto r1 = cache.put("A", "alpha");
+    EXPECT_TRUE(r1.inserted);
+    EXPECT_FALSE(r1.updated);
+    EXPECT_FALSE(r1.evicted);
+    EXPECT_EQ(r1.key, "A");
+    EXPECT_EQ(r1.value, "alpha");
+
+    // 2. Second insert
+    auto r2 = cache.put("B", "beta");
+    EXPECT_TRUE(r2.inserted);
+    EXPECT_FALSE(r2.updated);
+    EXPECT_FALSE(r2.evicted);
+
+    // 3. Update existing key
+    auto r3 = cache.put("A", "alpha-updated");
+    EXPECT_FALSE(r3.inserted);
+    EXPECT_TRUE(r3.updated);
+    EXPECT_FALSE(r3.evicted);
+    EXPECT_EQ(r3.value, "alpha-updated");
+
+    // 4. Insert triggering eviction (B was LRU because A was just updated)
+    auto r4 = cache.put("C", "gamma");
+    EXPECT_TRUE(r4.inserted);
+    EXPECT_FALSE(r4.updated);
+    EXPECT_TRUE(r4.evicted);
+    EXPECT_EQ(r4.evicted_key, "B");
+    EXPECT_EQ(r4.evicted_value, "beta");
+}
+
+TEST(LRUCacheTest, GetEntriesLRUtoMRUOrder) {
+    LRUCache<std::string, std::string> cache(3);
+    cache.put("A", "1");
+    cache.put("B", "2");
+    cache.put("C", "3");
+
+    // Order oldest to newest: A, B, C
+    auto lru_entries = cache.getEntriesLRUtoMRU();
+    ASSERT_EQ(lru_entries.size(), 3u);
+    EXPECT_EQ(lru_entries[0].first, "A"); // LRU (oldest)
+    EXPECT_EQ(lru_entries[1].first, "B");
+    EXPECT_EQ(lru_entries[2].first, "C"); // MRU (newest)
+
+    // Access A -> now order is B, C, A
+    cache.get("A");
+    auto after_access = cache.getEntriesLRUtoMRU();
+    ASSERT_EQ(after_access.size(), 3u);
+    EXPECT_EQ(after_access[0].first, "B"); // new LRU
+    EXPECT_EQ(after_access[1].first, "C");
+    EXPECT_EQ(after_access[2].first, "A"); // new MRU
+}
+
+TEST(LRUCacheTest, RemoveWithValueExtraction) {
+    LRUCache<std::string, std::string> cache(3);
+    cache.put("item1", "value1");
+
+    std::string val;
+    EXPECT_TRUE(cache.remove("item1", &val));
+    EXPECT_EQ(val, "value1");
+    EXPECT_FALSE(cache.contains("item1"));
+    EXPECT_FALSE(cache.remove("item1", &val));
+}
+

@@ -56,6 +56,16 @@ public:
         double miss_rate;
     };
 
+    struct PutResult {
+        bool inserted{false};
+        bool updated{false};
+        bool evicted{false};
+        K evicted_key{};
+        V evicted_value{};
+        K key{};
+        V value{};
+    };
+
     /**
      * @brief Construct an LRU cache with the given capacity.
      * @param capacity Maximum number of entries. Must be > 0.
@@ -102,25 +112,42 @@ public:
      *
      * @param key   The key to insert/update.
      * @param value The value to associate with the key.
+     * @return PutResult containing details of whether an insertion, update, or eviction occurred.
      */
-    void put(const K& key, V value) {
+    auto put(const K& key, V value) -> PutResult {
         std::unique_lock lock(mutex_);
+        PutResult result;
+        result.key = key;
+        
         auto it = map_.find(key);
         if (it != map_.end()) {
             // Update existing key in place and move to front.
             it->second->second = std::move(value);
             list_.splice(list_.begin(), list_, it->second);
-            return;
+            result.updated = true;
+            result.inserted = false;
+            result.value = it->second->second;
+            return result;
         }
+
+        result.inserted = true;
+        result.updated = false;
 
         // New entry: evict LRU if at capacity.
         if (list_.size() >= capacity_) {
+            if (!list_.empty()) {
+                result.evicted = true;
+                result.evicted_key = list_.back().first;
+                result.evicted_value = list_.back().second;
+            }
             evictLRU();
         }
 
         // Insert at front (MRU).
         list_.emplace_front(key, std::move(value));
         map_[key] = list_.begin();
+        result.value = list_.front().second;
+        return result;
     }
 
     /**
@@ -128,11 +155,14 @@ public:
      *
      * @return true if the key existed and was removed, false otherwise.
      */
-    auto remove(const K& key) -> bool {
+    auto remove(const K& key, V* out_val = nullptr) -> bool {
         std::unique_lock lock(mutex_);
         auto it = map_.find(key);
         if (it == map_.end()) {
             return false;
+        }
+        if (out_val) {
+            *out_val = it->second->second;
         }
         list_.erase(it->second);
         map_.erase(it);
@@ -190,25 +220,47 @@ public:
     /**
      * @brief Return keys from MRU to LRU order.
      */
-    auto getKeysInOrder() const -> std::vector<K> {
+    auto getKeysInOrder(bool mru_to_lru = true) const -> std::vector<K> {
         std::shared_lock lock(mutex_);
         std::vector<K> keys;
         keys.reserve(list_.size());
-        for (const auto& [k, _] : list_) {
-            keys.push_back(k);
+        if (mru_to_lru) {
+            for (const auto& [k, _] : list_) {
+                keys.push_back(k);
+            }
+        } else {
+            for (auto it = list_.rbegin(); it != list_.rend(); ++it) {
+                keys.push_back(it->first);
+            }
         }
         return keys;
     }
 
     /** @brief Return (key, value) entries from MRU to LRU order without changing recency. */
-    auto getEntries() const -> std::vector<std::pair<K, V>> {
+    auto getEntries(bool mru_to_lru = true) const -> std::vector<std::pair<K, V>> {
         std::shared_lock lock(mutex_);
         std::vector<std::pair<K, V>> entries;
         entries.reserve(list_.size());
-        for (const auto& [k, v] : list_) {
-            entries.emplace_back(k, v);
+        if (mru_to_lru) {
+            for (const auto& [k, v] : list_) {
+                entries.emplace_back(k, v);
+            }
+        } else {
+            for (auto it = list_.rbegin(); it != list_.rend(); ++it) {
+                entries.emplace_back(it->first, it->second);
+            }
         }
         return entries;
+    }
+
+    /** @brief Return (key, value) entries in LRU (oldest) -> MRU (newest) order. */
+    auto getEntriesLRUtoMRU() const -> std::vector<std::pair<K, V>> {
+        return getEntries(/*mru_to_lru=*/false);
+    }
+
+    /** @brief Return (key, value) entries in MRU (newest) -> LRU (oldest) order. */
+    auto getEntriesMRUtoLRU() const -> std::vector<std::pair<K, V>> {
+        return getEntries(/*mru_to_lru=*/true);
     }
 
     /**

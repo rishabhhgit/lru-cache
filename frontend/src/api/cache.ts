@@ -1,70 +1,137 @@
-import axios, { type AxiosError, type AxiosResponse } from 'axios';
+import axios, { type AxiosError } from 'axios';
 import type {
+    ApiResponse,
     CacheEntry,
     CacheStats,
+    DeleteEntryResponse,
     GetEntryResponse,
+    HealthResponse,
     ListCacheResponse,
+    PutEntryResponse,
 } from '@/types/cache';
 
-/**
- * Thin HTTP client for the CacheLab Express gateway.
- *
- * The gateway forwards every operation to the C++ cache server. If the C++
- * server is unreachable, the gateway returns an honest 502 instead of a
- * fabricated success, and we surface that error here.
- */
 const client = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
     headers: { 'Content-Type': 'application/json' },
+    timeout: 10000,
 });
 
-client.interceptors.response.use(
-    (res) => res,
-    (err: AxiosError) => {
-        if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
-            // eslint-disable-next-line no-console
-            console.error('[cache-api] gateway unreachable:', err.message);
+/**
+ * Unwraps the backend ApiResponse<T> envelope.
+ * If the response contains an error or non-success, throws with the error message.
+ */
+async function request<T>(requestFn: () => Promise<{ data: ApiResponse<T> }>): Promise<T> {
+    try {
+        const res = await requestFn();
+        if (res.data && typeof res.data === 'object') {
+            if ('data' in res.data && res.data.data !== undefined) {
+                return res.data.data as T;
+            }
+            return res.data as unknown as T;
         }
-        return Promise.reject(err);
-    },
-);
-
-async function request<T>(promise: Promise<AxiosResponse<T>>): Promise<T> {
-    const res = await promise;
-    return res.data as T;
+        return res.data as unknown as T;
+    } catch (err) {
+        const axiosErr = err as AxiosError<ApiResponse<unknown>>;
+        if (axiosErr.response?.data?.error) {
+            throw new Error(axiosErr.response.data.error);
+        }
+        if (axiosErr.response?.status === 502) {
+            throw new Error('C++ Cache Server is unreachable (HTTP 502)');
+        }
+        if (axiosErr.code === 'ECONNREFUSED') {
+            throw new Error('Backend gateway is unreachable (Connection refused)');
+        }
+        throw new Error(axiosErr.message || 'Unknown network error');
+    }
 }
 
 export const cacheApi = {
-    health: () => request<{ ok: boolean; status?: number }>(client.get('/health')),
+    health: async (): Promise<{ ok: boolean; cppServer: string; service: string }> => {
+        try {
+            const res = await client.get<HealthResponse>('/health');
+            const data = res.data;
+            const ok = Boolean(data?.success && data?.cppServer === 'ok');
+            return {
+                ok,
+                cppServer: data?.cppServer ?? 'down',
+                service: data?.service ?? 'cachelab-gateway',
+            };
+        } catch {
+            return {
+                ok: false,
+                cppServer: 'down',
+                service: 'cachelab-gateway',
+            };
+        }
+    },
 
-    getEntry: (key: string) =>
-        request<GetEntryResponse>(client.get(`/cache/${encodeURIComponent(key)}`)),
+    getEntry: async (key: string): Promise<GetEntryResponse> => {
+        try {
+            const res = await client.get<ApiResponse<GetEntryResponse>>(`/cache/${encodeURIComponent(key)}`);
+            if (res.data?.data) {
+                return res.data.data;
+            }
+            return res.data as unknown as GetEntryResponse;
+        } catch (err) {
+            const axiosErr = err as AxiosError<ApiResponse<GetEntryResponse>>;
+            // 404 indicates a clean cache miss from the server
+            if (axiosErr.response?.status === 404 && axiosErr.response?.data?.data) {
+                return axiosErr.response.data.data;
+            }
+            if (axiosErr.response?.data?.error) {
+                throw new Error(axiosErr.response.data.error);
+            }
+            throw err;
+        }
+    },
 
-    putEntry: (key: string, value: unknown) =>
-        request<{ key: string; value: string; message: string }>(
-            client.put(`/cache/${encodeURIComponent(key)}`, { value }),
+    putEntry: (key: string, value: unknown): Promise<PutEntryResponse> =>
+        request<PutEntryResponse>(() =>
+            client.put<ApiResponse<PutEntryResponse>>(`/cache/${encodeURIComponent(key)}`, { value }),
         ),
 
-    deleteEntry: (key: string) =>
-        request<{ key: string; message: string }>(
-            client.delete(`/cache/${encodeURIComponent(key)}`),
+    postEntry: (key: string, value: unknown): Promise<PutEntryResponse> =>
+        request<PutEntryResponse>(() =>
+            client.post<ApiResponse<PutEntryResponse>>('/cache', { key, value }),
         ),
 
-    listEntries: () => request<ListCacheResponse>(client.get('/cache')),
+    deleteEntry: (key: string): Promise<DeleteEntryResponse> =>
+        request<DeleteEntryResponse>(() =>
+            client.delete<ApiResponse<DeleteEntryResponse>>(`/cache/${encodeURIComponent(key)}`),
+        ),
 
-    getStats: () => request<CacheStats>(client.get('/stats')),
+    listEntries: (): Promise<ListCacheResponse> =>
+        request<ListCacheResponse>(() =>
+            client.get<ApiResponse<ListCacheResponse>>('/cache'),
+        ),
 
-    clear: () => request<{ message: string }>(client.post('/clear')),
+    getStats: (): Promise<CacheStats> =>
+        request<CacheStats>(() =>
+            client.get<ApiResponse<CacheStats>>('/stats'),
+        ),
 
-    resize: (capacity: number) =>
-        request<{ message: string; capacity: number }>(client.post('/resize', { capacity })),
+    clear: (): Promise<{ message: string }> =>
+        request<{ message: string }>(() =>
+            client.delete<ApiResponse<{ message: string }>>('/cache'),
+        ),
 
-    resetStats: () => request<{ message: string }>(client.post('/stats/reset')),
+    resize: (capacity: number): Promise<{ message: string; capacity: number }> =>
+        request<{ message: string; capacity: number }>(() =>
+            client.post<ApiResponse<{ message: string; capacity: number }>>('/cache/resize', { capacity }),
+        ),
+
+    resetStats: (): Promise<{ message: string }> =>
+        request<{ message: string }>(() =>
+            client.post<ApiResponse<{ message: string }>>('/stats/reset'),
+        ),
 };
 
 export type {
     CacheEntry,
     CacheStats,
     GetEntryResponse,
+    HealthResponse,
     ListCacheResponse,
+    PutEntryResponse,
+    DeleteEntryResponse,
 };

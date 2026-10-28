@@ -15,10 +15,33 @@ export interface CacheEntry {
     key: string;
     value: string;
     hit: boolean;
+    position?: number;
+    is_mru?: boolean;
+    is_lru?: boolean;
 }
+
 export interface ListCacheResponse {
     count: number;
     entries: CacheEntry[];
+    lru_to_mru?: CacheEntry[];
+    oldest_lru?: { key: string; value: string } | null;
+    newest_mru?: { key: string; value: string } | null;
+}
+
+export interface PutEntryResponse {
+    key: string;
+    value: string;
+    inserted?: boolean;
+    updated?: boolean;
+    evicted?: boolean;
+    evicted_entry?: { key: string; value: string } | null;
+    message: string;
+}
+
+export interface DeleteEntryResponse {
+    key: string;
+    value?: string;
+    message: string;
 }
 
 /** Response from GET /stats */
@@ -110,16 +133,16 @@ export class CacheService {
         }
     }
 
-    async putEntry(key: string, value: unknown): Promise<{ key: string; value: string; message: string }> {
-        const res = await this.client.put<{ key: string; value: string; message: string }>(
+    async putEntry(key: string, value: unknown): Promise<PutEntryResponse> {
+        const res = await this.client.put<PutEntryResponse>(
             `/cache/${encodeURIComponent(key)}`,
             { value },
         );
         return res.data;
     }
 
-    async deleteEntry(key: string): Promise<{ key: string; message: string }> {
-        const res = await this.client.delete<{ key: string; message: string }>(
+    async deleteEntry(key: string): Promise<DeleteEntryResponse> {
+        const res = await this.client.delete<DeleteEntryResponse>(
             `/cache/${encodeURIComponent(key)}`,
         );
         return res.data;
