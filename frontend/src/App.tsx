@@ -1,259 +1,281 @@
-/**
- * CacheLab Dashboard — React frontend for the LRU cache.
- *
- * Talks to the Express gateway via the cacheApi client. The gateway forwards
- * every operation to the C++ cache server and returns honest responses
- * (including 502 when the C++ server is down).
- */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { cacheApi, type CacheStats, type GetEntryResponse } from '@/api/cache';
+import { CacheList } from '@/components/CacheList';
+import { EntryForm } from '@/components/EntryForm';
+import { ErrorBanner } from '@/components/ErrorBanner';
+import { Stats } from '@/components/Stats';
+import './index.css';
 
-import { useState, useEffect, useCallback } from 'react';
-import { cacheApi } from '@/api/cache';
-import type { CacheEntry, CacheStats, GetEntryResponse } from '@/types/cache';
-
-type ApiError = { message?: string; status?: number };
-
-function App() {
-    const [entries, setEntries] = useState<CacheEntry[]>([]);
+export default function App() {
     const [stats, setStats] = useState<CacheStats | null>(null);
-    const [status, setStatus] = useState<{ ok: boolean; message?: string }>({ ok: false });
-    const [entryResult, setEntryResult] = useState<GetEntryResponse | null>(null);
+    const [entries, setEntries] = useState<{ key: string; value: string; hit: boolean }[]>([]);
+    const [entry, setEntry] = useState<GetEntryResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
 
-    const [putKey, setPutKey] = useState('');
-    const [putValue, setPutValue] = useState('');
-    const [getKey, setGetKey] = useState('');
-    const [delKey, setDelKey] = useState('');
-    const [resizeCap, setResizeCap] = useState('');
+    const statsRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Fetch entries + stats on load and on refresh.
-    const refresh = useCallback(async () => {
+    const clearError = useCallback(() => setError(null), []);
+
+    const fetchStats = useCallback(async () => {
         try {
-            const [listRes, statsRes, healthRes] = await Promise.all([
-                cacheApi.listEntries(),
-                cacheApi.getStats(),
-                cacheApi.health(),
-            ]);
-            setEntries(listRes.entries);
-            setStats(statsRes);
-            setStatus({ ok: healthRes.ok, message: healthRes.ok ? undefined : 'C++ server unreachable' });
-            setError(null);
-        } catch (err: unknown) {
-            const e = err as ApiError;
-            setError(e.message || 'Failed to load cache data');
-            setStatus({ ok: false, message: e.message });
+            setStats(await cacheApi.getStats());
+        } catch (err) {
+            setError((err as Error)?.message ?? 'Failed to load stats');
+        }
+    }, []);
+
+    const fetchEntries = useCallback(async () => {
+        try {
+            const list = await cacheApi.listEntries();
+            setEntries(list.entries);
+        } catch (err) {
+            setError((err as Error)?.message ?? 'Failed to load entries');
+        }
+    }, []);
+
+    const fetchHealth = useCallback(async () => {
+        try {
+            const health = await cacheApi.health();
+            if (!health.ok) {
+                setError('Cache server is unreachable');
+            }
+        } catch {
+            setError('Cache server is unreachable');
         }
     }, []);
 
     useEffect(() => {
-        refresh();
-        const id = setInterval(refresh, 3000);
-        return () => clearInterval(id);
-    }, [refresh]);
+        fetchHealth();
+        fetchStats();
+        fetchEntries();
+        statsRef.current = setInterval(() => {
+            fetchStats();
+            fetchEntries();
+        }, 2000);
+        return () => {
+            if (statsRef.current) clearInterval(statsRef.current);
+        };
+    }, [fetchHealth, fetchStats, fetchEntries]);
 
-    const handlePut = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!putKey || !putValue) return;
+    const handlePut = async (key: string, value: unknown) => {
+        setLoading(true);
+        setError(null);
         try {
-            setError(null);
-            await cacheApi.putEntry(putKey, putValue);
-            setPutValue('');
-            await refresh();
-        } catch (err: unknown) {
-            setError((err as ApiError).message || 'PUT failed');
+            await cacheApi.putEntry(key, value);
+            setEntry(null);
+            await fetchEntries();
+            await fetchStats();
+        } catch (err) {
+            setError((err as Error)?.message ?? 'Failed to save entry');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleGet = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!getKey) return;
+    const handleGet = async (key: string) => {
+        setLoading(true);
+        setError(null);
         try {
-            setError(null);
-            const res = await cacheApi.getEntry(getKey);
-            setEntryResult(res);
-        } catch (err: unknown) {
-            setEntryResult({ key: getKey, value: null, hit: false });
-            setError((err as ApiError).message || 'GET failed');
+            const result = await cacheApi.getEntry(key);
+            setEntry(result);
+            if (!result.hit) {
+                setError(`Key "${key}" not found in cache`);
+            }
+        } catch (err) {
+            setError((err as Error)?.message ?? 'Failed to get entry');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleDelete = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!delKey) return;
+    const handleDelete = async (key: string) => {
+        setLoading(true);
+        setError(null);
         try {
-            setError(null);
-            await cacheApi.deleteEntry(delKey);
-            setDelKey('');
-            await refresh();
-        } catch (err: unknown) {
-            setError((err as ApiError).message || 'DELETE failed');
+            await cacheApi.deleteEntry(key);
+            setEntry(null);
+            await fetchEntries();
+            await fetchStats();
+        } catch (err) {
+            setError((err as Error)?.message ?? 'Failed to delete entry');
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleClear = async () => {
+        setLoading(true);
+        setError(null);
         try {
-            setError(null);
             await cacheApi.clear();
-            await refresh();
-        } catch (err: unknown) {
-            setError((err as ApiError).message || 'CLEAR failed');
+            setEntry(null);
+            await fetchEntries();
+            await fetchStats();
+        } catch (err) {
+            setError((err as Error)?.message ?? 'Failed to clear cache');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleResize = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const cap = Number(resizeCap);
-        if (!cap || cap <= 0) return;
+    const handleResize = async (capacity: number) => {
+        setLoading(true);
+        setError(null);
         try {
-            setError(null);
-            await cacheApi.resize(cap);
-            setResizeCap('');
-            await refresh();
-        } catch (err: unknown) {
-            setError((err as ApiError).message || 'RESIZE failed');
+            await cacheApi.resize(capacity);
+            await fetchStats();
+            await fetchEntries();
+        } catch (err) {
+            setError((err as Error)?.message ?? 'Failed to resize cache');
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleResetStats = async () => {
+        setLoading(true);
+        setError(null);
         try {
-            setError(null);
             await cacheApi.resetStats();
-            await refresh();
-        } catch (err: unknown) {
-            setError((err as ApiError).message || 'RESET STATS failed');
+            await fetchStats();
+        } catch (err) {
+            setError((err as Error)?.message ?? 'Failed to reset stats');
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
-        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: 900, margin: '0 auto', padding: 24 }}>
-            <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>CL</div>
-                <div>
-                    <h1 style={{ margin: 0, fontSize: 20 }}>CacheLab</h1>
-                    <p style={{ margin: 0, fontSize: 13, color: '#666' }}>LRU Cache Dashboard &bull; C++ engine + Express gateway</p>
-                </div>
-                <div style={{ marginLeft: 'auto', padding: 8, borderRadius: 6, background: status.ok ? '#dcfce7' : '#fee2e2', color: status.ok ? '#166534' : '#991b1b', fontSize: 12, fontWeight: 600 }}>
-                    {status.ok ? 'Server OK' : 'Server Down'}
-                </div>
+        <div className="app">
+            <header>
+                <h1>CacheLab</h1>
+                <span className="badge ok">LRU Cache</span>
             </header>
 
-            {error && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 13 }}>{error}</div>
-            )}
+            <main className="app">
+                <ErrorBanner error={error} onDismiss={clearError} />
 
-            {/* Stats cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
-                {[['Capacity', stats?.capacity ?? '-'], ['Size', stats?.size ?? '-'], ['Hits', stats?.hits ?? '-'], ['Misses', stats?.misses ?? '-'], ['Evictions', stats?.evictions ?? '-'], ['Hit Rate', stats ? `${stats.hit_rate.toFixed(1)}%` : '-']].map(([label, value]) => (
-                    <div key={label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16 }}>
-                        <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{label}</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{value}</div>
-                    </div>
-                ))}
-            </div>
-
-            <section style={{ marginBottom: 24 }}>
-                <h2 style={{ fontSize: 16, marginBottom: 12, color: '#0f172a' }}>Cache Entries (MRU &rarr; LRU)</h2>
-                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                        <thead>
-                            <tr style={{ background: '#f1f5f9', textAlign: 'left' }}>
-                                <th style={{ padding: 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', fontSize: 11 }}>Key</th>
-                                <th style={{ padding: 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', fontSize: 11 }}>Value</th>
-                                <th style={{ padding: 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', fontSize: 11, width: 70 }}>Hit</th>
-                                <th style={{ padding: 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', fontSize: 11, width: 90 }}>Delete</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {entries.length === 0 ? (
-                                <tr><td colSpan={4} style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No entries in cache.</td></tr>
-                            ) : (
-                                entries.map((entry) => (
-                                    <tr key={entry.key} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                        <td style={{ padding: 12, fontWeight: 500, color: '#334155', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{entry.key}</td>
-                                        <td style={{ padding: 12, color: '#475569', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{entry.value}</td>
-                                        <td style={{ padding: 12 }}>
-                                            <span style={{ padding: '2px 8px', borderRadius: 4, background: entry.hit ? '#dcfce7' : '#f1f5f9', color: entry.hit ? '#166534' : '#64748b', fontSize: 11, fontWeight: 600 }}>{entry.hit ? 'HIT' : 'MISS'}</span>
-                                        </td>
-                                        <td style={{ padding: 12 }}>
-                                            <button
-                                                onClick={() => { setDelKey(entry.key); handleDelete(new Event('submit') as unknown as React.FormEvent); }}
-                                                style={{ background: '#fee2e2', color: '#991b1b', border: 'none', padding: '6px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
-                                            >
-                                                Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                <div className="toolbar">
+                    <button className="primary" onClick={fetchStats} disabled={loading}>
+                        Refresh
+                    </button>
+                    <button className="secondary" onClick={handleClear} disabled={loading}>
+                        Clear Cache
+                    </button>
+                    <button className="secondary" onClick={handleResetStats} disabled={loading}>
+                        Reset Stats
+                    </button>
                 </div>
-            </section>
 
-            <section style={{ marginBottom: 24, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 20 }}>
-                <h2 style={{ fontSize: 16, marginBottom: 16, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>&#128204;</span> Operations
-                </h2>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    {/* PUT */}
-                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: 16 }}>
-                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Put / Update key</div>
-                        <form onSubmit={handlePut} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <input
-                                placeholder="key"
-                                value={putKey}
-                                onChange={(e) => setPutKey(e.target.value)}
-                                style={{ padding: 8, border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, fontFamily: 'ui-monospace, monospace' }}
-                            />
-                            <input
-                                placeholder="value"
-                                value={putValue}
-                                onChange={(e) => setPutValue(e.target.value)}
-                                style={{ padding: 8, border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, fontFamily: 'ui-monospace, monospace' }}
-                            />
-                            <button type="submit" style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 4, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Put</button>
-                        </form>
+                <Stats stats={stats} loading={loading && entries.length === 0 && !stats} error={error} />
+
+                <div className="grid" style={{ gridTemplateColumns: '1fr 320px', gap: '1rem' }}>
+                    <div style={{ minWidth: 0 }}>
+                        <CacheList
+                            entries={entries}
+                            loading={loading}
+                            error={error}
+                            onGet={handleGet}
+                            onDelete={handleDelete}
+                        />
                     </div>
-
-                    {/* GET */}
-                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: 16 }}>
-                        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Get key</div>
-                        <form onSubmit={handleGet} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <input
-                                placeholder="key"
-                                value={getKey}
-                                onChange={(e) => setGetKey(e.target.value)}
-                                style={{ padding: 8, border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, fontFamily: 'ui-monospace, monospace' }}
-                            />
-                            <button type="submit" style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 4, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Get</button>
-                        </form>
-                        {entryResult && (
-                            <div style={{ marginTop: 10, padding: 8, background: entryResult.hit ? '#dcfce7' : '#fef2f2', borderRadius: 4, fontSize: 12, color: entryResult.hit ? '#166534' : '#991b1b' }}>
-                                {entryResult.hit ? `HIT: ${entryResult.value}` : 'MISS: key not found'}
+                    <div>
+                        <EntryForm
+                            onPut={handlePut}
+                            loading={loading}
+                            error={error}
+                            setError={setError}
+                        />
+                        {entry && (
+                            <div className="card" style={{ marginTop: '1rem' }}>
+                                <h2 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: '#94a3b8' }}>
+                                    Last Lookup
+                                </h2>
+                                <div className="row">
+                                    <span style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{entry.key}</span>
+                                    <span
+                                        className={`badge ${entry.hit ? 'ok' : 'bad'}`}
+                                        style={{ marginLeft: 'auto' }}
+                                    >
+                                        {entry.hit ? 'HIT' : 'MISS'}
+                                    </span>
+                                </div>
+                                <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', wordBreak: 'break-all', marginTop: '0.5rem' }}>
+                                    {entry.value ?? '<null>'}
+                                </div>
                             </div>
                         )}
                     </div>
                 </div>
+            </main>
+        </div>
+    return (
+        <div className="app">
+            <header>
+                <h1>CacheLab</h1>
+                <span className="badge ok">LRU Cache</span>
+            </header>
 
-                <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-                    <button onClick={handleRefresh} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Refresh</button>
-                    <button onClick={handleClear} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Clear All</button>
-                    <button onClick={handleResetStats} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Reset Stats</button>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <input placeholder="new capacity" value={resizeCap} onChange={(e) => setResizeCap(e.target.value)} style={{ padding: 8, border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, fontFamily: 'ui-monospace, monospace' }} />
-                        <button onClick={handleResize} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Resize</button>
+            <main className="app">
+                <ErrorBanner error={error} onDismiss={clearError} />
+
+                <div className="toolbar">
+                    <button className="primary" onClick={fetchStats} disabled={loading}>
+                        Refresh
+                    </button>
+                    <button className="secondary" onClick={handleClear} disabled={loading}>
+                        Clear Cache
+                    </button>
+                    <button className="secondary" onClick={handleResetStats} disabled={loading}>
+                        Reset Stats
+                    </button>
+                </div>
+
+                <Stats stats={stats} loading={loading && entries.length === 0 && !stats} error={error} />
+
+                <div className="grid" style={{ gridTemplateColumns: '1fr 320px', gap: '1rem' }}>
+                    <div style={{ minWidth: 0 }}>
+                        <CacheList
+                            entries={entries}
+                            loading={loading}
+                            error={error}
+                            onGet={handleGet}
+                            onDelete={handleDelete}
+                        />
+                    </div>
+                    <div>
+                        <EntryForm
+                            onPut={handlePut}
+                            loading={loading}
+                            error={error}
+                            setError={setError}
+                        />
+                        {entry && (
+                            <div className="card" style={{ marginTop: '1rem' }}>
+                                <h2 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: '#94a3b8' }}>
+                                    Last Lookup
+                                </h2>
+                                <div className="row">
+                                    <span style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{entry.key}</span>
+                                    <span
+                                        className={`badge ${entry.hit ? 'ok' : 'bad'}`}
+                                        style={{ marginLeft: 'auto' }}
+                                    >
+                                        {entry.hit ? 'HIT' : 'MISS'}
+                                    </span>
+                                </div>
+                                <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', wordBreak: 'break-all', marginTop: '0.5rem' }}>
+                                    {entry.value ?? '<null>'}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
-            </section>
-
-            <footer style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #e2e8f0', fontSize: 11, color: '#94a3b8' }}>
-                CacheLab &bull; C++20 LRU engine &rarr; Express gateway &rarr; React dashboard
-            </footer>
+            </main>
         </div>
     );
-
-    function handleRefresh() {
-        refresh();
-    }
 }
 
-export default App;
+    );
+}
