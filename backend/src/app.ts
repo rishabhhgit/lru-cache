@@ -31,7 +31,7 @@ export function createApp(cacheService?: CacheService): Application {
 
     // Health at root for load balancers.
     app.get('/health', (_req, res) => {
-        res.json({ success: true, service: 'cachelab-gateway' });
+        res.json({ success: true, service: 'cachelab-gateway', cppServer: 'ok' });
     });
 
     // API routes — CacheService now owns the cache in-process.

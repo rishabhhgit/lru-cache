@@ -107,7 +107,7 @@ export default function App() {
             const h = await cacheApi.health();
             setIsEngineOnline(h.ok);
             if (!h.ok) {
-                setError('Unable to reach C++ Cache Server. Make sure cache_server is running on port 8080.');
+                setError('Unable to reach the cache backend. Please try again shortly.');
             } else {
                 setError(null);
             }
