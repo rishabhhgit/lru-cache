@@ -12,10 +12,10 @@ export const OperationHistory: React.FC<OperationHistoryProps> = ({ logs, onClea
             <div className="cl-card-header">
                 <div className="cl-card-title-box">
                     <h3 className="cl-card-title">
-                        📜 Live Operation History <span className="cl-count-pill">{logs.length}</span>
+                        Operation Log <span className="cl-count-pill">{logs.length}</span>
                     </h3>
                     <span className="cl-card-subtitle">
-                        Session audit trail • In-memory frontend log of all cache interactions
+                        Session audit trail • In-memory interaction history
                     </span>
                 </div>
 

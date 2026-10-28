@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CacheEntry, CacheStats } from '@/types/cache';
+import { LayersIcon, ArrowRightLeftIcon, SparklesIcon, TerminalIcon } from './Icons';
 
 interface CacheVisualizerProps {
     entries: CacheEntry[]; // Ordered LRU -> MRU
@@ -24,8 +25,6 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
 }) => {
     const [showHashMap, setShowHashMap] = React.useState(true);
     const capacity = stats?.capacity ?? 1;
-
-    // Entries are passed in LRU -> MRU order
     const totalEntries = entries.length;
 
     return (
@@ -33,10 +32,10 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
             <div className="cl-vis-header">
                 <div className="cl-vis-title-group">
                     <h2 className="cl-vis-title">
-                        <span className="cl-vis-icon">🔗</span> Doubly Linked List & Hash Map State
+                        <LayersIcon size={14} /> Doubly Linked List & Hash Map
                     </h2>
                     <span className="cl-vis-subtitle">
-                        Real-time C++ heap representation • LRU (Head / Eviction Target) ⇄ MRU (Tail / Newest) • Capacity: {totalEntries}/{capacity}
+                        Memory structure • Head (LRU target) to Tail (MRU) • {totalEntries} of {capacity} slots occupied
                     </span>
                 </div>
 
@@ -46,7 +45,7 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
                         onClick={() => setShowHashMap((prev) => !prev)}
                         title="Toggle Hash Map mapping inspection"
                     >
-                        🗂️ {showHashMap ? 'Hide Hash Map' : 'Show Hash Map'}
+                        <TerminalIcon size={12} /> {showHashMap ? 'Hide Map' : 'Show Map'}
                     </button>
                 </div>
             </div>
@@ -55,13 +54,16 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
             <div className="cl-vis-canvas">
                 {totalEntries === 0 ? (
                     <div className="cl-vis-empty">
-                        <div className="cl-vis-empty-icon">📭</div>
-                        <div className="cl-vis-empty-title">Cache is currently empty</div>
+                        <div className="cl-vis-empty-icon">
+                            <LayersIcon size={24} />
+                        </div>
+                        <div className="cl-vis-empty-title">Cache is empty</div>
                         <div className="cl-vis-empty-desc">
-                            No entries in the C++ doubly linked list. Insert entries using the Playground below or load quick sample data.
+                            No entries in the C++ doubly linked list. Insert entries in the playground or load sample data.
                         </div>
                         <button className="cl-btn-sample" onClick={onLoadSampleData}>
-                            ⚡ Load Sample Data (A, B, C)
+                            <SparklesIcon size={12} style={{ display: 'inline', marginRight: 4 }} />
+                            Load Sample Data
                         </button>
                     </div>
                 ) : (
@@ -70,22 +72,22 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
                         {lastEvicted && actionType === 'evicted' && (
                             <div className="cl-evicted-ghost-wrapper">
                                 <div className="cl-node-card evicted-animation">
-                                    <div className="cl-node-tag tag-evicted">EVICTED FROM LRU</div>
+                                    <div className="cl-node-tag tag-evicted">EVICTED</div>
                                     <div className="cl-node-key">{lastEvicted.key}</div>
                                     <div className="cl-node-val">{lastEvicted.value}</div>
                                     <div className="cl-node-pointers">
                                         <span>pop_front()</span>
                                     </div>
                                 </div>
-                                <div className="cl-evict-arrow">⤳ Evicted</div>
+                                <div className="cl-evict-arrow">⟶ Evicted</div>
                             </div>
                         )}
 
                         {/* Head Sentinel / NULL pointer */}
                         <div className="cl-sentinel-box">
                             <span className="cl-sentinel-label">HEAD</span>
-                            <span className="cl-sentinel-null">nullptr</span>
-                            <span className="cl-sentinel-pointer">⟵ prev</span>
+                            <span className="cl-sentinel-null">null</span>
+                            <span className="cl-sentinel-pointer">← prev</span>
                         </div>
 
                         {/* List Nodes */}
@@ -111,12 +113,12 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
                                             <span className="cl-node-rank">#{index + 1}</span>
                                             {isOldestLRU && (
                                                 <span className="cl-node-tag tag-lru" title="Next in line to be evicted if full">
-                                                    LRU (Oldest)
+                                                    LRU
                                                 </span>
                                             )}
                                             {isNewestMRU && (
                                                 <span className="cl-node-tag tag-mru" title="Most recently accessed or inserted">
-                                                    MRU (Newest)
+                                                    MRU
                                                 </span>
                                             )}
                                             {!isOldestLRU && !isNewestMRU && (
@@ -153,25 +155,26 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
                                             <button
                                                 className="cl-btn-mini get"
                                                 onClick={() => onQuickGet(entry.key)}
-                                                title="GET: Touch and move to MRU"
+                                                title="GET: touch and promote to MRU"
                                             >
                                                 GET
                                             </button>
                                             <button
                                                 className="cl-btn-mini del"
                                                 onClick={() => onQuickDelete(entry.key)}
-                                                title="DELETE: Erase from cache"
+                                                title="DELETE: erase from cache"
                                             >
-                                                ✕
+                                                DEL
                                             </button>
                                         </div>
                                     </div>
 
                                     {/* Link Connector between adjacent nodes */}
                                     {index < totalEntries - 1 && (
-                                        <div className="cl-link-connector" title="Doubly linked list bidirectional pointers">
-                                            <div className="cl-link-arrow">⇄</div>
-                                            <div className="cl-link-line" />
+                                        <div className="cl-link-connector" title="Bidirectional node pointers">
+                                            <div className="cl-link-arrow">
+                                                <ArrowRightLeftIcon size={11} />
+                                            </div>
                                         </div>
                                     )}
                                 </React.Fragment>
@@ -181,8 +184,8 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
                         {/* Tail Sentinel / NULL pointer */}
                         <div className="cl-sentinel-box">
                             <span className="cl-sentinel-label">TAIL</span>
-                            <span className="cl-sentinel-null">nullptr</span>
-                            <span className="cl-sentinel-pointer">next ⟶</span>
+                            <span className="cl-sentinel-null">null</span>
+                            <span className="cl-sentinel-pointer">next →</span>
                         </div>
                     </div>
                 )}
@@ -193,10 +196,10 @@ export const CacheVisualizer: React.FC<CacheVisualizerProps> = ({
                 <div className="cl-hashmap-panel">
                     <div className="cl-hm-header">
                         <span className="cl-hm-title">
-                            std::unordered_map&lt;std::string, std::list::iterator&gt; [O(1) Avg Lookup]
+                            std::unordered_map&lt;Key, list::iterator&gt; [O(1) Lookup]
                         </span>
                         <span className="cl-hm-info">
-                            Each map entry stores a direct iterator/pointer to its doubly-linked node in memory.
+                            Maps keys directly to doubly-linked node iterators in memory
                         </span>
                     </div>
                     <div className="cl-hm-buckets">

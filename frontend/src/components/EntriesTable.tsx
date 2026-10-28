@@ -38,10 +38,10 @@ export const EntriesTable: React.FC<EntriesTableProps> = ({
             <div className="cl-card-header">
                 <div className="cl-card-title-box">
                     <h3 className="cl-card-title">
-                        📋 Cache Contents Table <span className="cl-count-pill">{entries.length}</span>
+                        Cache Entries <span className="cl-count-pill">{entries.length}</span>
                     </h3>
                     <span className="cl-card-subtitle">
-                        Inspect active entries and recency hierarchy in the C++ cache
+                        Recency order and active keys in the C++ engine
                     </span>
                 </div>
 
@@ -49,7 +49,7 @@ export const EntriesTable: React.FC<EntriesTableProps> = ({
                     <div className="cl-search-wrapper">
                         <input
                             type="text"
-                            placeholder="Search by key/value…"
+                            placeholder="Filter entries…"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             className="cl-search-input"
@@ -83,7 +83,6 @@ export const EntriesTable: React.FC<EntriesTableProps> = ({
             <div className="cl-table-responsive">
                 {entries.length === 0 ? (
                     <div className="cl-empty-state">
-                        <div className="cl-empty-icon">📂</div>
                         <div className="cl-empty-text">No cached items found</div>
                         <div className="cl-empty-sub">Add a key-value pair above to see it stored here.</div>
                     </div>
@@ -117,8 +116,8 @@ export const EntriesTable: React.FC<EntriesTableProps> = ({
                                     <tr key={entry.key} className={isMRU ? 'row-mru' : isLRU ? 'row-lru' : ''}>
                                         <td className="cl-cell-rank">#{idx + 1}</td>
                                         <td className="cl-cell-recency">
-                                            {isMRU && <span className="cl-badge-recency mru">★ MRU (Most Recent)</span>}
-                                            {isLRU && <span className="cl-badge-recency lru">⚠ LRU (Next to Evict)</span>}
+                                            {isMRU && <span className="cl-badge-recency mru">MRU (Newest)</span>}
+                                            {isLRU && <span className="cl-badge-recency lru">LRU (Target)</span>}
                                             {!isMRU && !isLRU && (
                                                 <span className="cl-badge-recency mid">Rank {entries.findIndex(e => e.key === entry.key) + 1}</span>
                                             )}

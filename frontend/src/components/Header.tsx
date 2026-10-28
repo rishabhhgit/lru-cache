@@ -1,5 +1,13 @@
 import React from 'react';
 import type { CacheStats } from '@/types/cache';
+import {
+    TerminalIcon,
+    LayersIcon,
+    BookOpenIcon,
+    CodeIcon,
+    TrashIcon,
+    RefreshIcon,
+} from './Icons';
 
 interface HeaderProps {
     stats: CacheStats | null;
@@ -40,14 +48,14 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="cl-header-top">
                 <div className="cl-brand">
                     <div className="cl-logo-box">
-                        <span className="cl-logo-icon">⚡</span>
+                        <TerminalIcon size={16} />
                     </div>
                     <div className="cl-brand-info">
                         <div className="cl-brand-title">
-                            CacheLab <span className="cl-badge-engine">C++20 Core</span>
+                            CacheLab <span className="cl-badge-engine">C++20</span>
                         </div>
                         <div className="cl-brand-sub">
-                            High-Performance Interactive LRU Cache Engine & Visualizer
+                            High-Performance LRU Cache Engine & Visualizer
                         </div>
                     </div>
                 </div>
@@ -56,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className={`cl-status-pill ${isEngineOnline ? 'online' : 'offline'}`} title={isEngineOnline ? 'Connected to C++ LRU Server' : 'C++ Server Unreachable'}>
                         <span className="cl-status-dot" />
                         <span className="cl-status-text">
-                            {isEngineOnline ? 'C++ Engine Online (8080)' : 'C++ Engine Offline'}
+                            {isEngineOnline ? 'C++ Engine 8080' : 'Engine Offline'}
                         </span>
                     </div>
 
@@ -65,19 +73,19 @@ export const Header: React.FC<HeaderProps> = ({
                             className={`cl-tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
                             onClick={() => setActiveTab('dashboard')}
                         >
-                            📊 Visualizer
+                            <LayersIcon size={13} /> Visualizer
                         </button>
                         <button
                             className={`cl-tab-btn ${activeTab === 'learn' ? 'active' : ''}`}
                             onClick={() => setActiveTab('learn')}
                         >
-                            🎓 Learn LRU
+                            <BookOpenIcon size={13} /> Learn LRU
                         </button>
                         <button
                             className={`cl-tab-btn ${activeTab === 'code' ? 'active' : ''}`}
                             onClick={() => setActiveTab('code')}
                         >
-                            💻 C++ Engine
+                            <CodeIcon size={13} /> Engine Code
                         </button>
                     </div>
                 </div>
@@ -120,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className="cl-global-actions">
                         {confirmClear ? (
                             <div className="cl-confirm-group">
-                                <span className="cl-confirm-text">Clear all entries?</span>
+                                <span className="cl-confirm-text">Clear cache?</span>
                                 <button
                                     className="cl-btn-danger-confirm"
                                     onClick={() => {
@@ -129,7 +137,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     }}
                                     disabled={loading}
                                 >
-                                    Yes, Clear
+                                    Confirm
                                 </button>
                                 <button className="cl-btn-ghost-sm" onClick={() => setConfirmClear(false)}>
                                     Cancel
@@ -142,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 disabled={loading || !stats || stats.size === 0}
                                 title="Remove all entries from cache"
                             >
-                                🗑️ Clear Cache
+                                <TrashIcon size={13} /> Clear
                             </button>
                         )}
 
@@ -157,7 +165,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     }}
                                     disabled={loading}
                                 >
-                                    Yes, Reset
+                                    Confirm
                                 </button>
                                 <button className="cl-btn-ghost-sm" onClick={() => setConfirmReset(false)}>
                                     Cancel
@@ -170,7 +178,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 disabled={loading}
                                 title="Reset hit/miss/eviction counters"
                             >
-                                🔄 Reset Stats
+                                <RefreshIcon size={13} /> Reset Stats
                             </button>
                         )}
                     </div>

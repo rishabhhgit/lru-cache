@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { GetEntryResponse, PutEntryResponse } from '@/types/cache';
+import { TerminalIcon } from './Icons';
 
 interface PlaygroundProps {
     onGet: (key: string) => Promise<GetEntryResponse>;
@@ -90,7 +91,9 @@ export const Playground: React.FC<PlaygroundProps> = ({
         <div className="cl-card cl-playground-card">
             <div className="cl-card-header">
                 <div className="cl-card-title-box">
-                    <h3 className="cl-card-title">🕹️ Operation Playground</h3>
+                    <h3 className="cl-card-title">
+                        <TerminalIcon size={14} /> Operation Playground
+                    </h3>
                     <span className="cl-card-subtitle">Execute live LRU operations directly against the C++ engine</span>
                 </div>
 
@@ -99,13 +102,13 @@ export const Playground: React.FC<PlaygroundProps> = ({
                         className={`cl-subnav-btn ${opTab === 'put' ? 'active' : ''}`}
                         onClick={() => { setOpTab('put'); setError(null); }}
                     >
-                        PUT / INSERT
+                        PUT
                     </button>
                     <button
                         className={`cl-subnav-btn ${opTab === 'get' ? 'active' : ''}`}
                         onClick={() => { setOpTab('get'); setError(null); }}
                     >
-                        GET / LOOKUP
+                        GET
                     </button>
                     <button
                         className={`cl-subnav-btn ${opTab === 'delete' ? 'active' : ''}`}
