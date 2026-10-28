@@ -1,10 +1,12 @@
 # CacheLab — High-Performance LRU Cache
 
-CacheLab is a production-grade LRU (Least Recently Used) cache with a C++20 core engine exposed over HTTP, plus an Express TypeScript API gateway and a frontend dashboard scaffold.
+CacheLab is a complete, production-grade LRU (Least Recently Used) cache system with a C++20 core engine exposed over HTTP, an Express TypeScript API gateway, and a React dashboard frontend.
+
+CacheLab demonstrates a full-stack LRU cache: the hot path lives in a lock-conscious C++ engine for maximum throughput, the Express gateway forwards requests and never fabricates success when the backend is down, and the React dashboard lets you inspect keys, values, hit/miss status, and live statistics in real time.
 
 - **C++ engine** (`cpp-engine/`): header-only generic `LRUCache<K,V>` using `std::list` + `std::unordered_map` for O(1) average operations, protected by `std::shared_mutex` for thread safety, served via a lightweight `cpp-httplib` HTTP server.
 - **API gateway** (`backend/`): Express + TypeScript service that forwards cache operations to the C++ server, with validation, centralized error handling, and honest 502 reporting when the C++ server is unavailable.
-- **Frontend** (`frontend/`): empty TypeScript scaffold ready for a dashboard UI.
+- **Frontend** (`frontend/`): React + TypeScript dashboard (Vite) for browsing entries (MRU → LRU), putting/getting/deleting keys, resizing, clearing, and watching live stats.
 - **Tests**: GoogleTest unit tests for the C++ engine; Jest + supertest integration tests for the gateway against a real C++ server.
 
 ## Repository layout
@@ -21,9 +23,7 @@ LRU CACHE/
 │   │   ├── services/cacheService.ts  # Axios HTTP client forwarding to C++ server
 │   │   └── middleware/       # errorHandler, requestLogger
 │   ├── tests/
-│   │   ├── cache.integration.test.ts   # integration tests vs real C++ server
-│   │   └── repro_tmp.test.ts           # 502-unavailable repro test
-│   ├── repro_tmp.ts          # standalone 502 repro script
+│   │   └── cache.integration.test.ts   # integration tests vs real C++ server
 │   ├── package.json          # scripts: build, start, dev, test
 │   ├── tsconfig.json
 │   └── jest.config.js
@@ -34,8 +34,24 @@ LRU CACHE/
 │   ├── benchmarks/lru_cache_benchmark.cpp  # Google Benchmark benchmarks
 │   ├── CMakeLists.txt
 │   └── build/                # CMake build output (cache_server, cache_tests, cache_benchmark)
-└── frontend/                 # TypeScript dashboard scaffold (empty component/pages dirs)
-    └── src/{components,hooks,pages,services,types}/
+└── frontend/                 # React + TypeScript dashboard (Vite)
+    ├── index.html
+    ├── vite.config.ts
+    ├── tsconfig.json
+    ├── tsconfig.node.json
+    ├── package.json
+    └── src/
+        ├── main.tsx          # React entrypoint
+        ├── App.tsx           # dashboard shell
+        ├── index.css         # dark-theme styles
+        ├── vite-env.d.ts     # Vite env types
+        ├── api/cache.ts      # axios client for gateway endpoints
+        ├── types/cache.ts    # shared TypeScript types
+        ├── components/
+        │   ├── Stats.tsx         # live capacity/size/hits/misses/evictions
+        │   ├── CacheList.tsx     # entries table (MRU → LRU) with get/delete
+        │   ├── EntryForm.tsx     # put/update key (JSON or plain text)
+        │   └── ErrorBanner.tsx   # error display with dismiss
 ```
 
 ## How the LRU cache is implemented
@@ -184,7 +200,25 @@ Gateway env vars:
 - `CACHE_SERVER_TIMEOUT_MS` (default 5000)
 - `CORS_ORIGIN` (default `*`)
 
-### 6. Run backend tests
+### 6. Build and run the React frontend
+
+```bash
+cd frontend
+npm install
+npm run dev            # Vite dev server (port 5173)
+```
+
+Open `http://localhost:5173`. It proxies `/api` to the gateway at `http://localhost:5000`. Set `VITE_API_BASE_URL` to override.
+
+For production:
+
+```bash
+cd frontend
+npm run build          # output to dist/
+npm run preview        # serve production build
+```
+
+### 7. Run backend tests
 
 Integration tests spawn a real C++ server on port 8199 and exercise the gateway:
 
@@ -250,8 +284,9 @@ Run: `cd cpp-engine/build && ./cache_benchmark`
 - C++ LRU engine: complete, unit-tested, benchmarked, thread-safe.
 - C++ HTTP server: complete, all REST endpoints implemented.
 - Express gateway: complete, all routes forwarding to C++ server with validation and honest error reporting.
-- Backend tests: passing (12/12 integration + repro).
-- Frontend: scaffold only (empty directories), ready for a dashboard UI.
+- Backend tests: passing (12/12 integration).
+- Frontend: complete React dashboard with live stats, entry list (MRU→LRU), put/get/delete/resize/clear/reset-stats.
+- End-to-end: C++ server → Express gateway → React dashboard verified.
 
 ## License
 
