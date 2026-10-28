@@ -1,4 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+    PlayIcon,
+    PauseIcon,
+    RotateCcwIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
+    BookOpenIcon,
+    LayersIcon,
+    CodeIcon,
+    HelpCircleIcon,
+} from './Icons';
 
 interface TutorialStep {
     stepIndex: number;
@@ -180,25 +191,29 @@ export const LearnMode: React.FC = () => {
                     className={`cl-learn-nav-btn ${learnSection === 'tutorial' ? 'active' : ''}`}
                     onClick={() => setLearnSection('tutorial')}
                 >
-                    🎬 Interactive Simulation
+                    <LayersIcon size={14} className="cl-tab-icon" />
+                    <span>Interactive Walkthrough</span>
                 </button>
                 <button
                     className={`cl-learn-nav-btn ${learnSection === 'concepts' ? 'active' : ''}`}
                     onClick={() => setLearnSection('concepts')}
                 >
-                    📖 What is LRU? (ELI5)
+                    <BookOpenIcon size={14} className="cl-tab-icon" />
+                    <span>Core Concepts</span>
                 </button>
                 <button
                     className={`cl-learn-nav-btn ${learnSection === 'structures' ? 'active' : ''}`}
                     onClick={() => setLearnSection('structures')}
                 >
-                    🏗️ Why 2 Data Structures?
+                    <CodeIcon size={14} className="cl-tab-icon" />
+                    <span>Data Structures</span>
                 </button>
                 <button
                     className={`cl-learn-nav-btn ${learnSection === 'faq' ? 'active' : ''}`}
                     onClick={() => setLearnSection('faq')}
                 >
-                    💡 FAQ & Real World Use
+                    <HelpCircleIcon size={14} className="cl-tab-icon" />
+                    <span>FAQ & Real World</span>
                 </button>
             </div>
 
@@ -236,7 +251,8 @@ export const LearnMode: React.FC = () => {
                                     onClick={handleRestart}
                                     title="Start over from Step 1"
                                 >
-                                    ⏮ Restart
+                                    <RotateCcwIcon size={13} />
+                                    <span>Restart</span>
                                 </button>
                                 <button
                                     className="cl-btn-ghost-sm"
@@ -244,14 +260,25 @@ export const LearnMode: React.FC = () => {
                                     disabled={currentStepIndex === 0}
                                     title="Previous step"
                                 >
-                                    ◀ Previous
+                                    <ChevronLeftIcon size={13} />
+                                    <span>Previous</span>
                                 </button>
                                 <button
                                     className={`cl-btn-primary cl-btn-play ${isPlaying ? 'playing' : ''}`}
                                     onClick={togglePlay}
                                     title={isPlaying ? 'Pause automatic walkthrough' : 'Play automatic walkthrough'}
                                 >
-                                    {isPlaying ? '⏸ Pause' : '▶ Auto-Play'}
+                                    {isPlaying ? (
+                                        <>
+                                            <PauseIcon size={12} />
+                                            <span>Pause</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <PlayIcon size={12} />
+                                            <span>Auto-Play</span>
+                                        </>
+                                    )}
                                 </button>
                                 <button
                                     className="cl-btn-primary"
@@ -259,7 +286,8 @@ export const LearnMode: React.FC = () => {
                                     disabled={currentStepIndex === TUTORIAL_STEPS.length - 1}
                                     title="Next step"
                                 >
-                                    Next Step ▶
+                                    <span>Next</span>
+                                    <ChevronRightIcon size={13} />
                                 </button>
                             </div>
                         </div>
